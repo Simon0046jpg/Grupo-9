@@ -1,32 +1,116 @@
-# Prerequisites
-*.d
+#include <StarterKitNB.h>
+#include <Arduino.h>
+#include "SparkFunLIS3DH.h" 
+#include <Wire.h>
 
-# Compiled Object files
-*.slo
-*.lo
-*.o
-*.obj
+float accelX;
+float accelY;
+float accelZ;
 
-# Precompiled Headers
-*.gch
-*.pch
+// Definición de funciones y variables
+StarterKitNB sk;
+String msg;
+LIS3DH SensorTwo(I2C_MODE, 0x18);
 
-# Compiled Dynamic libraries
-*.so
-*.dylib
-*.dll
+// APN
+String apn = "m2m.entel.cl";
+String user = "entelpcs";
+String pw = "entelpcs";
 
-# Fortran module files
-*.mod
-*.smod
+// ThingsBoard
+String clientID = "grupo9";
+String userName = "99999";
+String password = "99999";
 
-# Compiled Static libraries
-*.lai
-*.la
-*.a
-*.lib
+void lis3dh_read_data()
+{
+  // read the sensor value
+  uint8_t cnt = 0;
 
-# Executables
-*.exe
-*.out
-*.app
+  Serial.print(" X(g) = ");
+  Serial.println(SensorTwo.readFloatAccelX(), 4);
+  Serial.print(" Y(g) = ");
+  Serial.println(SensorTwo.readFloatAccelY(), 4);
+  Serial.print(" Z(g)= ");
+  Serial.println(SensorTwo.readFloatAccelZ(), 4);
+}
+void setup()
+{
+    sk.Setup(true);
+  delay(5);
+  sk.UserAPN(apn, user, pw);
+  delay(5);
+  sk.Connect(apn);
+  delay(10);
+  sk.DeviceCheck(); // Consulta sobre las características actuales del dispositivo
+  delay(10);
+  time_t timeout = millis();
+    Serial.begin(115200);
+    while (!Serial)
+    {
+        if ((millis() - timeout) < 5000)
+    {
+      delay(100);
+    }
+    else
+    {
+      break;
+    }
+    }
+
+    if (SensorTwo.begin() != 0)
+    {
+        Serial.println("Problem starting the sensor at 0x18.");
+    }
+    else
+    {
+        Serial.println("Sensor at 0x18 started.");
+        // Set low power mode
+        uint8_t data_to_write = 0;
+        SensorTwo.readRegister(&data_to_write, LIS3DH_CTRL_REG1);
+        data_to_write |= 0x08;
+        SensorTwo.writeRegister(LIS3DH_CTRL_REG1, data_to_write);
+        delay(5);
+
+        data_to_write = 0;
+        SensorTwo.readRegister(&data_to_write, 0x1E);
+        data_to_write |= 0x90;
+        SensorTwo.writeRegister(0x1E, data_to_write);
+        delay(5);
+    }
+    Serial.println("enter !");
+}
+
+void loop()
+{
+  if (!sk.ConnectionStatus())
+  {
+    sk.Reconnect(apn);
+    delay(20); // Si se desconecta de NB, se reconecta
+  }
+
+  if (!sk.LastMessageStatus)
+  {
+    sk.ConnectBroker(clientID, userName, password);
+    delay(20);
+  }
+    lis3dh_read_data();
+
+  accelX = SensorTwo.readFloatAccelX();
+  
+  accelY = SensorTwo.readFloatAccelY();
+  
+  accelZ = SensorTwo.readFloatAccelZ() - 1;
+
+   if (accelX > 0.7 || accelY > 0.7 || accelZ > 0.7) {
+       msg = "{\"accelX\": " + String(accelX, 4) + ", \"accelY\": " + String(accelY, 4) + ", \"accelZ\": " + String(accelZ, 4) + ", \"risk\": " + String(1) +"}";
+        sk.SendMessage(msg);
+    }
+    else {
+        // Si la condición no se cumple, asignar el valor de "risk" a 0 y enviar el mensaje.
+        msg = "{\"accelX\": " + String(accelX, 4) + ", \"accelY\": " + String(accelY, 4) + ", \"accelZ\": " + String(accelZ, 4) + ", \"risk\": " + String(0) +"}";
+        sk.SendMessage(msg);
+    }
+  delay(5);
+}
+
